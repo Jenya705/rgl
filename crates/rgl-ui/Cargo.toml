@@ -3,7 +3,6 @@ name = "rgl-ui"
 version.workspace = true
 edition.workspace = true
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
 bevy.workspace = true
+derive_more.workspace = true

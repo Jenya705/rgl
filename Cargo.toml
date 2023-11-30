@@ -17,6 +17,7 @@ bevy = { version = "0.12" }
 bevy_ecs_tilemap = { git = "https://github.com/divark/bevy_ecs_tilemap", branch = "0.12-fixes" }
 derive_more = { version = "0.99" }
 rgl-input = { path = "crates/rgl-input" }
+rgl-ui = { path = "crates/rgl-ui" }
 
 [workspace.package]
 version = "0.1.0"
@@ -24,4 +25,6 @@ edition = "2021"
 
 [dependencies]
 bevy.workspace = true
+bevy_pixel_camera = "0.12.1"
 rgl-input.workspace = true
+rgl-ui.workspace = true
