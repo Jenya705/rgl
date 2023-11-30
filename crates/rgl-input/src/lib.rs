@@ -34,7 +34,7 @@ impl BindingApp for App {
             .resource_mut::<Bindings>()
             .add_binding(BindingData::new(type_name::<T>().into(), default_key));
         self
-    }   
+    }
 }
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
@@ -69,7 +69,7 @@ impl BindingData {
 ///   that on all version the order of binding's register will be the same, so that save should assure,
 ///   that binding's id are their names, which won't be changed
 /// - Default keys are also not a thing
-/// 
+///
 /// Save should look like this:
 /// ```json
 /// {
