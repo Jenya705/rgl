@@ -1,0 +1,9 @@
+[package]
+name = "rgl-level"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+bevy.workspace = true
+bevy_ecs_tilemap.workspace = true
+fastrand.workspace = true
