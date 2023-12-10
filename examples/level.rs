@@ -2,7 +2,7 @@ use std::any::TypeId;
 
 use bevy::prelude::*;
 use bevy_ecs_tilemap::prelude::*;
-use rgl_level::{DefaultLevelObject, Layer, LayerBundle, Level, LevelBundle, LevelPlugin};
+use rgl_level::{DefaultLevelObject, Layer, LayerBundle, Level, LevelBundle, LevelPlugin, LevelObjectRarity};
 
 fn main() {
     App::new()
@@ -41,7 +41,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
             None,
             None,
         ],
-    }));
+    }), LevelObjectRarity::COMMON);
 
     layer.add_object(Box::new(DefaultLevelObject {
         bundle: TileTextureIndex(1),
@@ -57,7 +57,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
             None,
             None,
         ],
-    }));
+    }), LevelObjectRarity::COMMON);
 
     commands.spawn(LayerBundle::from_layer(layer));
 

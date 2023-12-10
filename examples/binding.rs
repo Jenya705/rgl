@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use rgl_input::{BindingPlugin, BindingApp, Key, Binding, Bindings, BindingId};
+use rgl_input::{BindingPlugin, BindingApp, Key, Binding, BindingId};
 
 pub struct YoBinding;
 

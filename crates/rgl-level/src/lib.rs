@@ -54,18 +54,35 @@ fn generate_layers(
         })
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct LevelObjectRarity(pub u32);
+
+impl LevelObjectRarity {
+    pub const COMMON: LevelObjectRarity = LevelObjectRarity(10);
+    pub const RARE: LevelObjectRarity = LevelObjectRarity(5);
+    pub const VERY_RARE: LevelObjectRarity = LevelObjectRarity(1);
+}
+
+impl Default for LevelObjectRarity {
+    fn default() -> Self {
+        Self::COMMON
+    }
+}
+
 #[derive(Component, Default)]
 pub struct Layer {
+    /// Empty vector means, that the layer should be created for each level kind
+    pub level_kinds: Vec<TypeId>,
     pub z_index: f32,
     pub tile_size: TilemapTileSize,
     pub grid_size: TilemapGridSize,
     pub texture: TilemapTexture,
-    objects: Vec<Box<dyn LevelObjectDyn>>,
+    objects: Vec<(Box<dyn LevelObjectDyn>, LevelObjectRarity)>,
 }
 
 impl Layer {
-    pub fn add_object<T: LevelObject>(&mut self, obj: Box<T>) {
-        self.objects.push(obj);
+    pub fn add_object<T: LevelObject>(&mut self, obj: Box<T>, rarity: LevelObjectRarity) {
+        self.objects.push((obj, rarity));
     }
 }
 
@@ -87,12 +104,25 @@ impl Layer {
         pos: Vec2,
         parent: Entity,
     ) {
+        if !self.level_kinds.is_empty()
+            && self
+                .level_kinds
+                .iter()
+                .find(|v| level.kind.eq(*v))
+                .is_none()
+        {
+            return;
+        }
+
         let tile_level_entity = commands.spawn_empty().id();
         let mut tile_storage = TileStorage::empty(level.size.as_uvec2().into());
 
+        let mut any_tile = false;
+
         for (pos, _tile) in level.iter() {
             let mut scratch_i = 0usize;
-            for (i, object) in self.objects.iter().enumerate() {
+            let mut rarity_sum = 0;
+            for (i, (object, object_rarity)) in self.objects.iter().enumerate() {
                 if scratch.len() == scratch_i {
                     scratch.push(Default::default());
                 }
@@ -100,16 +130,29 @@ impl Layer {
                 c_scratch.clear();
                 if object.check(level, pos, c_scratch) {
                     *object_i = i;
+                    rarity_sum += object_rarity.0;
                     scratch_i += 1;
                 }
             }
 
             if scratch_i != 0 {
-                let chosen_object = rng.usize(0..scratch_i);
+                any_tile = true;
+                let mut chosen_object = rng.u32(0..rarity_sum);
 
-                let (object_i, object_scratch) = &mut scratch[chosen_object];
+                let (object_i, object_scratch) = scratch
+                    .iter_mut()
+                    .find(|(index, _)| {
+                        let object_rarity = self.objects[*index].1 .0;
+                        if object_rarity >= chosen_object {
+                            true
+                        } else {
+                            chosen_object -= object_rarity;
+                            false
+                        }
+                    })
+                    .unwrap();
 
-                self.objects[*object_i].spawn(
+                self.objects[*object_i].0.spawn(
                     &object_scratch,
                     commands,
                     TileBundle {
@@ -122,19 +165,23 @@ impl Layer {
             }
         }
 
-        commands
-            .entity(tile_level_entity)
-            .insert(TilemapBundle {
-                tile_size: self.tile_size,
-                grid_size: self.grid_size,
-                texture: self.texture.clone(),
-                map_type: TilemapType::Square,
-                size: level.size.as_uvec2().into(),
-                storage: tile_storage,
-                transform: Transform::from_translation(Vec3::new(pos.x, pos.y, self.z_index)),
-                ..Default::default()
-            })
-            .set_parent(parent);
+        if any_tile {
+            commands
+                .entity(tile_level_entity)
+                .insert(TilemapBundle {
+                    tile_size: self.tile_size,
+                    grid_size: self.grid_size,
+                    texture: self.texture.clone(),
+                    map_type: TilemapType::Square,
+                    size: level.size.as_uvec2().into(),
+                    storage: tile_storage,
+                    transform: Transform::from_translation(Vec3::new(pos.x, pos.y, self.z_index)),
+                    ..Default::default()
+                })
+                .set_parent(parent);
+        } else {
+            commands.entity(tile_level_entity).despawn();
+        }
     }
 }
 
