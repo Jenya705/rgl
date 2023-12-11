@@ -122,6 +122,7 @@ impl Layer {
         for (pos, _tile) in level.iter() {
             let mut scratch_i = 0usize;
             let mut rarity_sum = 0;
+        
             for (i, (object, object_rarity)) in self.objects.iter().enumerate() {
                 if scratch.len() == scratch_i {
                     scratch.push(Default::default());
@@ -259,7 +260,7 @@ where
     }
 
     fn check(&self, level: &Level, pos: IVec2, fill: &mut Vec<IVec2>) -> bool {
-        if matches!(self.level_kind, Some(level_kind) if level_kind == level.kind) {
+        if matches!(self.level_kind, Some(level_kind) if level_kind != level.kind) {
             return false;
         }
         let mut i = 0;
