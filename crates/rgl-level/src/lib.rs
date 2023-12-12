@@ -1,8 +1,10 @@
-use std::any::TypeId;
-
 use bevy::prelude::*;
 use bevy_ecs_tilemap::prelude::*;
 use fastrand::Rng;
+use rgl_registry::{
+    new_registry, new_registry_item, ChildRegistry, RegistriesRegistry, RegistryAppMethods,
+    RegistryId, RegistryPlugin, UnknownRegistryId,
+};
 
 /// Handles generation of layers:
 /// - Each entity with [`Level`] component, that was recently created, will be used to generate Tilemaps using [`Layer`]
@@ -11,9 +13,14 @@ pub struct LevelPlugin;
 
 impl Plugin for LevelPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(PostUpdate, generate_layers);
+        app.add_systems(PostUpdate, generate_layers)
+            .add_plugins(RegistryPlugin::<LevelKindRegistry>::default())
+            .register_item::<LevelKindRegistry>("level_kind")
+            .register_item::<DefaultLevel>("default");
     }
 }
+
+new_registry!(LevelKindRegistry, u16);
 
 #[derive(Bundle, Default)]
 pub struct LayerBundle {
@@ -72,7 +79,7 @@ impl Default for LevelObjectRarity {
 #[derive(Component, Default)]
 pub struct Layer {
     /// Empty vector means, that the layer should be created for each level kind
-    pub level_kinds: Vec<TypeId>,
+    pub level_kinds: Vec<RegistryId<LevelKindRegistry>>,
     pub z_index: f32,
     pub tile_size: TilemapTileSize,
     pub grid_size: TilemapGridSize,
@@ -105,11 +112,7 @@ impl Layer {
         parent: Entity,
     ) {
         if !self.level_kinds.is_empty()
-            && self
-                .level_kinds
-                .iter()
-                .find(|v| level.kind.eq(*v))
-                .is_none()
+            && self.level_kinds.iter().find(|v| level.kind.eq(v)).is_none()
         {
             return;
         }
@@ -122,7 +125,7 @@ impl Layer {
         for (pos, _tile) in level.iter() {
             let mut scratch_i = 0usize;
             let mut rarity_sum = 0;
-        
+
             for (i, (object, object_rarity)) in self.objects.iter().enumerate() {
                 if scratch.len() == scratch_i {
                     scratch.push(Default::default());
@@ -188,31 +191,57 @@ impl Layer {
 
 #[derive(Component)]
 pub struct Level {
-    pub tiles: Vec<TypeId>,
-    pub kind: TypeId,
+    pub tiles: Vec<UnknownRegistryId>,
+    pub kind: RegistryId<LevelKindRegistry>,
     pub size: IVec2,
+    #[cfg(debug_assertions)]
+    pub tiles_registry: RegistryId<RegistriesRegistry>,
 }
 
-pub struct JustLevel;
+impl Level {
+    pub fn from_tiles<TR: ChildRegistry, const C: usize, const R: usize>(
+        tiles: [[RegistryId<TR>; C]; R],
+    ) -> Self {
+        let tiles = tiles.map(|tiles| tiles.map(UnknownRegistryId::from));
+        let mut tiles_vec = Vec::new();
+        tiles_vec.reserve(C * R);
+        // SAFETY: tiles_vec.reserve() ensures, that we will have space for C * R items in vec
+        // tiles and tiles_vec can not overlap, because vec is allocated dynamically
+        unsafe { std::ptr::copy_nonoverlapping(tiles[0].as_ptr(), tiles_vec.as_mut_ptr(), C * R) };
+        // SAFETY: we copied C * R items in the last statement
+        unsafe {
+            tiles_vec.set_len(C * R);
+        }
 
-impl Default for Level {
-    fn default() -> Self {
         Self {
-            tiles: vec![],
-            kind: TypeId::of::<JustLevel>(),
-            size: IVec2::ZERO,
+            tiles: tiles_vec,
+            kind: RegistryId::from_item::<DefaultLevel>(),
+            size: IVec2::new(C as i32, R as i32),
+            #[cfg(debug_assertions)]
+            tiles_registry: RegistryId::from_item::<TR>(),
         }
     }
 }
 
-#[derive(Bundle, Default)]
+new_registry_item!(DefaultLevel, LevelKindRegistry);
+
+#[derive(Bundle)]
 pub struct LevelBundle {
     pub transform: TransformBundle,
     pub level: Level,
 }
 
+impl LevelBundle {
+    pub fn from_level(level: Level) -> Self {
+        Self {
+            level,
+            transform: TransformBundle::default(),
+        }
+    }
+}
+
 impl Level {
-    pub fn iter(&self) -> impl Iterator<Item = (IVec2, TypeId)> + '_ {
+    pub fn iter(&self) -> impl Iterator<Item = (IVec2, UnknownRegistryId)> + '_ {
         self.tiles.iter().cloned().enumerate().map(|(index, tile)| {
             (
                 IVec2::new(index as i32 % self.size.x, index as i32 / self.size.y),
@@ -221,11 +250,11 @@ impl Level {
         })
     }
 
-    pub fn get(&self, pos: IVec2) -> Option<TypeId> {
+    pub fn get(&self, pos: IVec2) -> UnknownRegistryId {
         if pos.x >= self.size.x || pos.x <= -1 || pos.y >= self.size.y || pos.y <= -1 {
-            None
+            UnknownRegistryId::NONE
         } else {
-            Some(self.tiles[(pos.x + pos.y * self.size.x) as usize])
+            self.tiles[(pos.x + pos.y * self.size.x) as usize]
         }
     }
 }
@@ -239,9 +268,27 @@ pub trait LevelObject: Sync + Send + 'static {
 }
 
 pub struct DefaultLevelObject<B> {
-    pub level_kind: Option<TypeId>,
-    pub tiles: [Option<TypeId>; 9],
+    pub level_kind: Option<RegistryId<LevelKindRegistry>>,
+    pub tiles: [UnknownRegistryId; 9],
     pub bundle: B,
+    #[cfg(debug_assertions)]
+    pub tiles_registry: RegistryId<RegistriesRegistry>,
+}
+
+impl<B> DefaultLevelObject<B> {
+    pub fn new<TR: ChildRegistry>(
+        level_kind: Option<RegistryId<LevelKindRegistry>>,
+        tiles: [Option<RegistryId<TR>>; 9],
+        bundle: B,
+    ) -> Self {
+        Self {
+            level_kind,
+            tiles: tiles.map(UnknownRegistryId::from_option),
+            bundle,
+            #[cfg(debug_assertions)]
+            tiles_registry: RegistryId::from_item::<TR>(),
+        }
+    }
 }
 
 impl<B> LevelObject for DefaultLevelObject<B>
@@ -260,15 +307,16 @@ where
     }
 
     fn check(&self, level: &Level, pos: IVec2, fill: &mut Vec<IVec2>) -> bool {
-        if matches!(self.level_kind, Some(level_kind) if level_kind != level.kind) {
+        if matches!(&self.level_kind, Some(level_kind) if level.kind.ne(level_kind)) {
             return false;
         }
         let mut i = 0;
         for dy in -1..2 {
             for dx in -1..2 {
-                if let Some(level_tile) = self.tiles[i] {
+                let rid = self.tiles[i];
+                if rid != UnknownRegistryId::NONE {
                     let c_pos = pos + IVec2::new(dx, dy);
-                    if level.get(c_pos) != Some(level_tile) {
+                    if level.get(c_pos) != rid {
                         return false;
                     }
                 }

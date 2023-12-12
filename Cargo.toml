@@ -23,6 +23,7 @@ parking_lot = "0.12"
 paste = "1.0"
 rgl-input = { path = "crates/rgl-input" }
 rgl-level = { path = "crates/rgl-level" }
+rgl-registry = { path = "crates/rgl-registry" }
 
 [workspace.package]
 version = "0.1.0"
@@ -32,5 +33,6 @@ edition = "2021"
 bevy.workspace = true
 rgl-input.workspace = true
 rgl-level.workspace = true
+rgl-registry.workspace = true
 bevy_ecs_tilemap.workspace = true
 fastrand.workspace = true

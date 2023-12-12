@@ -47,9 +47,62 @@ pub trait RegistryItem: Sync + Send + 'static {
 }
 
 pub trait Registry: Sync + Send + 'static {
-    type Id: Clone + Sync + Send + Into<usize> + 'static;
+    type Id: PartialEq + Clone + Sync + Send + Into<usize> + 'static;
 
     fn next_id() -> &'static Mutex<Self::Id>;
+}
+
+pub trait ChildRegistry: Registry + RegistryItem<R = RegistriesRegistry> {}
+
+#[repr(transparent)]
+pub struct RegistryId<R: Registry>(R::Id);
+
+impl<R: Registry> RegistryId<R> {
+    pub fn from_id(id: R::Id) -> Self {
+        Self(id)
+    }
+
+    pub fn from_item<I: RegistryItem<R = R>>() -> Self {
+        Self(I::id())
+    }
+
+    pub fn is<I: RegistryItem<R = R>>(&self) -> bool {
+        self.0 == I::id()
+    }
+}
+
+impl<R: Registry> PartialEq for RegistryId<R> {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
+
+impl<R: Registry> Clone for RegistryId<R> {
+    fn clone(&self) -> Self {
+        Self::from_id(self.0.clone())
+    }
+}
+
+impl<R: Registry> Copy for RegistryId<R> where R::Id: Copy {}
+
+#[derive(PartialEq, Clone, Copy, Debug)]
+pub struct UnknownRegistryId(pub usize);
+
+impl UnknownRegistryId {
+    pub const NONE: Self = Self(usize::MAX);
+
+    pub fn from_option<R: Registry>(value: Option<RegistryId<R>>) -> Self {
+        match value {
+            Some(rid) => rid.into(),
+            None => Self::NONE,
+        }
+    }
+}
+
+impl<R: Registry> From<RegistryId<R>> for UnknownRegistryId {
+    fn from(value: RegistryId<R>) -> Self {
+        Self(value.0.into())
+    }
 }
 
 #[derive(Resource, Debug)]
@@ -123,6 +176,19 @@ impl RegistryAppMethods for App {
     }
 }
 
+pub static REGISTRY_NEXT_ID: Mutex<usize> = Mutex::new(0);
+
+/// A special registry, that handles ids of registries. The only registry that can have none id
+pub struct RegistriesRegistry;
+
+impl Registry for RegistriesRegistry {
+    type Id = usize;
+
+    fn next_id() -> &'static Mutex<Self::Id> {
+        &REGISTRY_NEXT_ID
+    }
+}
+
 #[macro_export]
 macro_rules! new_registry {
     ($registry: ident, $id: ty) => {
@@ -133,6 +199,7 @@ macro_rules! new_registry {
             #[allow(non_upper_case_globals)]
             static [<__ $registry _NEXT_ID>]: $crate::__private::parking_lot::Mutex<$id> =
                 $crate::__private::parking_lot::Mutex::<$id>::new(0);
+
         }
 
         impl $crate::Registry for $registry {
@@ -144,14 +211,17 @@ macro_rules! new_registry {
                 }
             }
         }
+
+        $crate::__impl_registry_item!($registry, $crate::RegistriesRegistry);
+
+        impl $crate::ChildRegistry for $registry {}
     };
 }
 
+#[doc(hidden)]
 #[macro_export]
-macro_rules! new_item {
+macro_rules! __impl_registry_item {
     ($item: ident, $registry: ty) => {
-        pub struct $item;
-
         $crate::__private::paste::paste! {
             #[doc(hidden)]
             #[$crate::__private::ctor::ctor]
@@ -176,14 +246,23 @@ macro_rules! new_item {
     };
 }
 
+#[macro_export]
+macro_rules! new_registry_item {
+    ($item: ident, $registry: ty) => {
+        pub struct $item;
+
+        $crate::__impl_registry_item!($item, $registry);
+    };
+}
+
 #[cfg(test)]
 mod tests {
 
     use super::*;
 
-    new_item!(TestItem1, TestRegistry);
+    new_registry_item!(TestItem1, TestRegistry);
     new_registry!(TestRegistry, u8);
-    new_item!(TestItem2, TestRegistry);
+    new_registry_item!(TestItem2, TestRegistry);
 
     #[test]
     fn easy_test() {
