@@ -1,0 +1,10 @@
+[package]
+name = "rgl-registry"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+bevy.workspace = true
+ctor.workspace = true
+parking_lot.workspace = true
+paste.workspace = true
