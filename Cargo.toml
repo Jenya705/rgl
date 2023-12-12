@@ -15,8 +15,10 @@ members = ["crates/*"]
 [workspace.dependencies]
 bevy = { version = "0.12" }
 bevy_ecs_tilemap = { git = "https://github.com/divark/bevy_ecs_tilemap", branch = "0.12-fixes" }
-derive_more = { version = "0.99" }
+derive_more = "0.99"
+fastrand = "2.0"
 rgl-input = { path = "crates/rgl-input" }
+rgl-level = { path = "crates/rgl-level" }
 
 [workspace.package]
 version = "0.1.0"
@@ -25,3 +27,6 @@ edition = "2021"
 [dependencies]
 bevy.workspace = true
 rgl-input.workspace = true
+rgl-level.workspace = true
+bevy_ecs_tilemap.workspace = true
+fastrand.workspace = true
