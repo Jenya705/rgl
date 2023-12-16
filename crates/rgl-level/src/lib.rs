@@ -1,10 +1,7 @@
 use bevy::prelude::*;
 use bevy_ecs_tilemap::prelude::*;
 use fastrand::Rng;
-use rgl_registry::{
-    new_registry, new_registry_item, ChildRegistry, RegistriesRegistry, RegistryAppMethods,
-    RegistryId, RegistryPlugin, UnknownRegistryId,
-};
+use rgl_registry::*;
 
 /// Handles generation of layers:
 /// - Each entity with [`Level`] component, that was recently created, will be used to generate Tilemaps using [`Layer`]
@@ -14,9 +11,8 @@ pub struct LevelPlugin;
 impl Plugin for LevelPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(PostUpdate, generate_layers)
-            .add_plugins(RegistryPlugin::<LevelKindRegistry>::default())
-            .register_item::<LevelKindRegistry>("level_kind")
-            .register_item::<DefaultLevel>("default");
+            .register_two_sided_data_id2value::<LevelKindRegistry, &'static str>("level_kind")
+            .register_two_sided_data_id2value::<DefaultLevel, &'static str>("default");
     }
 }
 
@@ -195,7 +191,7 @@ pub struct Level {
     pub kind: RegistryId<LevelKindRegistry>,
     pub size: IVec2,
     #[cfg(debug_assertions)]
-    pub tiles_registry: RegistryId<RegistriesRegistry>,
+    pub tiles_registry: RegistryId<Registries>,
 }
 
 impl Level {
@@ -215,15 +211,15 @@ impl Level {
 
         Self {
             tiles: tiles_vec,
-            kind: RegistryId::from_item::<DefaultLevel>(),
+            kind: RegistryId::new::<DefaultLevel>(),
             size: IVec2::new(C as i32, R as i32),
             #[cfg(debug_assertions)]
-            tiles_registry: RegistryId::from_item::<TR>(),
+            tiles_registry: RegistryId::new::<TR>(),
         }
     }
 }
 
-new_registry_item!(DefaultLevel, LevelKindRegistry);
+new_registry_items!(LevelKindRegistry { DefaultLevel });
 
 #[derive(Bundle)]
 pub struct LevelBundle {
@@ -272,7 +268,7 @@ pub struct DefaultLevelObject<B> {
     pub tiles: [UnknownRegistryId; 9],
     pub bundle: B,
     #[cfg(debug_assertions)]
-    pub tiles_registry: RegistryId<RegistriesRegistry>,
+    pub tiles_registry: RegistryId<Registries>,
 }
 
 impl<B> DefaultLevelObject<B> {
@@ -283,10 +279,10 @@ impl<B> DefaultLevelObject<B> {
     ) -> Self {
         Self {
             level_kind,
-            tiles: tiles.map(UnknownRegistryId::from_option),
+            tiles: tiles.map(UnknownRegistryId::from),
             bundle,
             #[cfg(debug_assertions)]
-            tiles_registry: RegistryId::from_item::<TR>(),
+            tiles_registry: RegistryId::new::<TR>(),
         }
     }
 }

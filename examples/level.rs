@@ -1,31 +1,24 @@
 use bevy::prelude::*;
 use bevy_ecs_tilemap::prelude::*;
 use rgl_level::{
-    DefaultLevelObject, DefaultLevel, Layer, LayerBundle, Level, LevelBundle, LevelObjectRarity,
+    DefaultLevel, DefaultLevelObject, Layer, LayerBundle, Level, LevelBundle, LevelObjectRarity,
     LevelPlugin,
 };
-use rgl_registry::{
-    new_registry, new_registry_item, RegistryAppMethods, RegistryId, RegistryPlugin,
-};
+use rgl_registry::*;
 
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
         .add_plugins(TilemapPlugin)
         .add_plugins(LevelPlugin)
-        .add_plugins(RegistryPlugin::<LevelTileRegistry>::default())
-        .register_item::<Floor>("floor")
-        .register_item::<Wall>("wall")
-        .register_item::<Air>("air")
-        .register_item::<LevelTileRegistry>("level_tile")
+        .register_two_sided_data_id2value::<LevelTileRegistry, &'static str>("level_tile")
         .add_systems(Startup, setup)
         .run()
 }
 
 new_registry!(LevelTileRegistry, u16);
-new_registry_item!(Floor, LevelTileRegistry);
-new_registry_item!(Wall, LevelTileRegistry);
-new_registry_item!(Air, LevelTileRegistry);
+
+new_registry_items!(LevelTileRegistry { Floor, Wall, Air });
 
 fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands.spawn(Camera2dBundle::default());
@@ -37,10 +30,10 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
 
     layer.add_object(
         Box::new(DefaultLevelObject::new(
-            Some(RegistryId::from_item::<DefaultLevel>()),
+            Some(RegistryId::new::<DefaultLevel>()),
             {
                 let mut tiles = [None; 9];
-                tiles[4] = Some(RegistryId::from_item::<Floor>());
+                tiles[4] = Some(RegistryId::new::<Floor>());
                 tiles
             },
             TileTextureIndex(0),
@@ -50,10 +43,10 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
 
     layer.add_object(
         Box::new(DefaultLevelObject::new(
-            Some(RegistryId::from_item::<DefaultLevel>()),
+            Some(RegistryId::new::<DefaultLevel>()),
             {
                 let mut tiles = [None; 9];
-                tiles[4] = Some(RegistryId::from_item::<Wall>());
+                tiles[4] = Some(RegistryId::new::<Wall>());
                 tiles
             },
             TileTextureIndex(1),
@@ -65,12 +58,12 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
 
     commands.spawn(LevelBundle::from_level(Level::from_tiles([
         [
-            RegistryId::from_item::<Floor>(),
-            RegistryId::from_item::<Floor>(),
+            RegistryId::new::<Floor>(),
+            RegistryId::new::<Floor>(),
         ],
         [
-            RegistryId::from_item::<Air>(),
-            RegistryId::from_item::<Wall>(),
+            RegistryId::new::<Air>(),
+            RegistryId::new::<Wall>(),
         ],
     ])));
 }

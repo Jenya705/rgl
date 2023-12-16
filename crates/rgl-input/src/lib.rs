@@ -1,12 +1,10 @@
-use std::{
-    any::{type_name, Any},
-    marker::PhantomData,
-};
-
 use bevy::{
     input::{keyboard::KeyboardInput, mouse::MouseButtonInput, InputSystem},
     prelude::*,
-    utils::HashMap,
+};
+use rgl_registry::{
+    new_registry, RegistryAppExt, RegistryItem, RegistryOneSidedDataCell,
+    RegistryTwoSidedDataCellId2Value,
 };
 
 pub struct BindingPlugin;
@@ -16,25 +14,34 @@ pub struct BindingSet;
 
 impl Plugin for BindingPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<Input<BindingId>>()
-            .init_resource::<Bindings>()
-            .configure_sets(PreUpdate, BindingSet.after(InputSystem))
-            .add_systems(PreUpdate, key_binding_input.in_set(BindingSet));
+        app.configure_sets(PreUpdate, BindingSet.after(InputSystem))
+            .add_systems(PreUpdate, key_binding_input.in_set(BindingSet))
+            .register_two_sided_data_id2value::<BindingRegistry, &'static str>("bindings")
+            .register_two_sided_data_id2value::<BindingCategoryRegistry, &'static str>("binding_categories");
     }
 }
 
-pub trait BindingApp {
-    fn register_binding<T: Any>(&mut self, default_key: Key) -> &mut App;
+new_registry!(BindingRegistry, u16);
+
+new_registry!(BindingCategoryRegistry, u8);
+
+pub trait BindingAppExt {
+    fn register_binding<I>(&mut self, name: &'static str, default_key: Key) -> &mut Self
+    where
+        I: RegistryItem<Registry = BindingRegistry>;
 }
 
-impl BindingApp for App {
-    fn register_binding<T: Any>(&mut self, default_key: Key) -> &mut App {
-        let _ = self
-            .world
-            .resource_mut::<Bindings>()
-            .add_binding(BindingData::new(type_name::<T>().into(), default_key));
+impl BindingAppExt for App {
+    fn register_binding<I>(&mut self, name: &'static str, default_key: Key) -> &mut Self
+    where
+        I: RegistryItem<Registry = BindingRegistry>,
+    {
+        self.register_two_sided_data_id2value::<I, &'static str>(name)
+            .register_one_sided_data::<I, DefaultBindingKey>(DefaultBindingKey(default_key))
+            .register_two_sided_data_id2value::<I, SetBindingKey>(SetBindingKey(default_key))
+            .register_one_sided_data::<I, BindingState>(BindingState::default());
         self
-    }   
+    }
 }
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
@@ -43,122 +50,55 @@ pub enum Key {
     Mouse(MouseButton),
 }
 
-#[repr(transparent)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct BindingId(usize);
+pub struct DefaultBindingKey(pub Key);
 
-pub struct BindingData {
-    pub name: String,
-    pub default_key: Key,
-    pub set_key: Option<Key>,
-}
+#[derive(Hash, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SetBindingKey(pub Key);
 
-impl BindingData {
-    pub fn new(name: String, default_key: Key) -> Self {
-        Self {
-            name,
-            default_key,
-            set_key: Some(default_key),
-        }
-    }
-}
+#[derive(Default, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BindingState(u8);
 
-/// About saveability of this resource:
-/// - Categories should not be saved, because it can not be changed by the player
-/// - BindingId is not a thing for saves, because we can not assure,
-///   that on all version the order of binding's register will be the same, so that save should assure,
-///   that binding's id are their names, which won't be changed
-/// - Default keys are also not a thing
-/// 
-/// Save should look like this:
-/// ```json
-/// {
-///     "binding_name": "set_key"
-/// }
-/// ```
-#[derive(Resource, Default)]
-pub struct Bindings {
-    categories: HashMap<String, Vec<BindingId>>,
-    bindings: Vec<BindingData>,
-    keys: HashMap<Key, BindingId>,
-}
+impl BindingState {
+    const JUST_PRESSED: u8 = 0x1;
+    const JUST_RELEASED: u8 = 0x2;
+    const PRESSED: u8 = 0x4;
 
-impl Bindings {
-    pub(crate) fn add_binding(&mut self, binding: BindingData) -> BindingId {
-        let bid = BindingId(self.bindings.len());
-        self.keys.insert(binding.set_key.unwrap(), bid);
-        self.bindings.push(binding);
-        bid
+    pub fn just_pressed(&self) -> bool {
+        self.0 & Self::JUST_PRESSED != 0
     }
 
-    /// # Panics
-    /// When binding is already added to the category
-    pub(crate) fn add_to_category(&mut self, bid: BindingId, category: &str) {
-        if !self.categories.contains_key(category) {
-            self.categories.insert(category.into(), vec![bid]);
-        } else {
-            let category = self.categories.get_mut(category).unwrap();
-            debug_assert!(category.iter().find(|bid2| bid.eq(bid2)).is_none());
-            category.push(bid);
+    pub fn just_released(&self) -> bool {
+        self.0 & Self::JUST_RELEASED != 0
+    }
+
+    pub fn pressed(&self) -> bool {
+        self.0 & Self::PRESSED != 0
+    }
+
+    pub(crate) fn press(&mut self) {
+        if !self.pressed() {
+            self.0 = Self::JUST_PRESSED | Self::PRESSED;
         }
     }
 
-    pub(crate) fn change_binding_key(&mut self, bid: BindingId, new_key: Key) -> Option<BindingId> {
-        let cur_bid = self.keys.get(&new_key).cloned();
-        if let Some(cur_bid) = cur_bid {
-            if bid == cur_bid {
-                return None;
-            } else {
-                self.bindings[cur_bid.0].set_key = None;
-            }
-        }
-        let binding = &mut self.bindings[bid.0];
-        if let Some(set_key) = binding.set_key {
-            self.keys.remove(&set_key);
-        }
-        binding.set_key = Some(new_key);
-        self.keys.insert(new_key, bid);
-        cur_bid
+    pub(crate) fn release(&mut self) {
+        self.0 = Self::JUST_RELEASED;
     }
 
-    pub(crate) fn find_binding(&self, name: &str) -> Option<BindingId> {
-        self.bindings
-            .iter()
-            .enumerate()
-            .find(|(_, bdata)| bdata.name == name)
-            .map(|(bid, _)| BindingId(bid))
+    pub(crate) fn clear(&mut self) {
+        self.0 &= Self::PRESSED;
     }
 }
 
-pub type Binding<'s, T> = Local<'s, BindingIdState<T>>;
-
-#[doc(hidden)]
-pub struct BindingIdState<T: Any> {
-    pub id: BindingId,
-    _marker: PhantomData<T>,
-}
-
-impl<T: Any> FromWorld for BindingIdState<T> {
-    fn from_world(world: &mut World) -> Self {
-        BindingIdState {
-            id: world
-                .resource::<Bindings>()
-                .find_binding(type_name::<T>())
-                .expect(
-                "Systems with bindings should be initialised after the required binding is added",
-            ),
-            _marker: PhantomData,
-        }
-    }
-}
+pub type BindingStates = RegistryOneSidedDataCell<BindingRegistry, BindingState>;
 
 fn key_binding_input(
     mut keyboard: EventReader<KeyboardInput>,
     mut mouse: EventReader<MouseButtonInput>,
-    bindings: Res<Bindings>,
-    mut binding: ResMut<Input<BindingId>>,
+    binding_keys: Res<RegistryTwoSidedDataCellId2Value<BindingRegistry, SetBindingKey>>,
+    mut binding_states: ResMut<BindingStates>,
 ) {
-    binding.clear();
+    binding_states.c1.iter_mut().for_each(BindingState::clear);
     for (key, pressed) in keyboard
         .read()
         .filter_map(|v| {
@@ -171,11 +111,12 @@ fn key_binding_input(
                 .map(|v| (Key::Mouse(v.button), v.state.is_pressed())),
         )
     {
-        if let Some(bid) = bindings.keys.get(&key) {
+        if let Some(bid) = binding_keys.id(&SetBindingKey(key)) {
+            let value = binding_states.value_mut(bid).unwrap();
             if pressed {
-                binding.press(*bid)
+                value.press();
             } else {
-                binding.release(*bid)
+                value.release();
             }
         }
     }
