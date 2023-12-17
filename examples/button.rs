@@ -18,8 +18,13 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands.make_button(
         "Hello!",
         Style {
+            width: Val::Px(128.0),
+            height: Val::Px(48.0),
+            left: Val::Percent(50.0),
+            top: Val::Percent(50.0),
             ..Default::default()
         },
+        24.0,
         RglButton,
         asset_server,
     );

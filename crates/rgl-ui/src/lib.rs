@@ -1,5 +1,7 @@
 use bevy::{ecs::system::EntityCommands, prelude::*};
 
+pub struct UiPlugin;
+
 trait Spawn<'w, 's> {
     fn spawn<T: Bundle>(&mut self, bundle: T) -> EntityCommands<'w, 's, '_>;
 }
@@ -16,24 +18,34 @@ impl<'w, 's> Spawn<'w, 's> for ChildBuilder<'w, 's, '_> {
     }
 }
 
-pub trait UiCommandsExt<'w, 's, T: Component> {
-    fn make_button(
+pub trait UiCommandsExt<'w, 's> {
+    fn make_button<C: Component>(
         &mut self,
         text: impl Into<String>,
         style: Style,
-        marker: T,
+        font_size: f32,
+        marker: C,
         asset_server: Res<AssetServer>,
     ) -> EntityCommands<'w, 's, '_>;
 }
 
-impl<'w, 's, T: Spawn<'w, 's>, C: Component> UiCommandsExt<'w, 's, C> for T {
-    fn make_button(
+impl<'w, 's, T: Spawn<'w, 's>> UiCommandsExt<'w, 's> for T {
+    fn make_button<C: Component>(
         &mut self,
         text: impl Into<String>,
         style: Style,
+        font_size: f32,
         marker: C,
         asset_server: Res<AssetServer>,
     ) -> EntityCommands<'w, 's, '_> {
+        let node_style = Style {
+            width: style.width,
+            height: style.height,
+            align_items: AlignItems::Center,
+            justify_content: JustifyContent::Center,
+            ..Default::default()
+        };
+
         let mut ec = self.spawn((
             ButtonBundle {
                 image: UiImage::new(asset_server.load("buttons/menu/generic_button_normal.png")),
@@ -44,10 +56,24 @@ impl<'w, 's, T: Spawn<'w, 's>, C: Component> UiCommandsExt<'w, 's, C> for T {
         ));
 
         ec.with_children(|parent| {
-            parent.spawn(TextBundle {
-                text: Text::from_section(text, TextStyle::default()),
-                ..Default::default()
-            });
+            parent
+                .spawn(NodeBundle {
+                    style: node_style,
+                    ..Default::default()
+                })
+                .with_children(|p| {
+                    p.spawn(TextBundle {
+                        text: Text::from_section(
+                            text,
+                            TextStyle {
+                                font: asset_server.load("fonts/manaspace.ttf"),
+                                font_size,
+                                ..Default::default()
+                            },
+                        ),
+                        ..Default::default()
+                    });
+                });
         });
 
         ec
