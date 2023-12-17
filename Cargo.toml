@@ -17,8 +17,13 @@ bevy = { version = "0.12" }
 bevy_ecs_tilemap = { git = "https://github.com/divark/bevy_ecs_tilemap", branch = "0.12-fixes" }
 derive_more = "0.99"
 fastrand = "2.0"
+ctor = "0.2"
+lazy_static = "1.4"
+parking_lot = "0.12"
+paste = "1.0"
 rgl-input = { path = "crates/rgl-input" }
 rgl-level = { path = "crates/rgl-level" }
+rgl-registry = { path = "crates/rgl-registry" }
 
 [workspace.package]
 version = "0.1.0"
@@ -28,5 +33,6 @@ edition = "2021"
 bevy.workspace = true
 rgl-input.workspace = true
 rgl-level.workspace = true
+rgl-registry.workspace = true
 bevy_ecs_tilemap.workspace = true
 fastrand.workspace = true

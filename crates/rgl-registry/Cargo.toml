@@ -1,9 +1,10 @@
 [package]
-name = "rgl-input"
+name = "rgl-registry"
 version.workspace = true
 edition.workspace = true
 
 [dependencies]
 bevy.workspace = true
-derive_more.workspace = true
-rgl-registry.workspace = true
+ctor.workspace = true
+parking_lot.workspace = true
+paste.workspace = true
