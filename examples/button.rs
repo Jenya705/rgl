@@ -1,4 +1,4 @@
-use bevy::prelude::*;
+use bevy::{prelude::*, render::{RenderPlugin, settings::{RenderCreation, WgpuSettings, Backends}}};
 use bevy_pixel_camera::{PixelCameraPlugin, PixelViewport};
 use rgl_ui::{UiCommandsExt, UiPlugin};
 
@@ -7,7 +7,16 @@ pub struct RglButton;
 
 fn main() {
     App::new()
-        .add_plugins(DefaultPlugins.set(ImagePlugin::default_nearest()))
+        .add_plugins(
+            DefaultPlugins
+                .set(ImagePlugin::default_nearest())
+                .set(RenderPlugin {
+                    render_creation: RenderCreation::Automatic(WgpuSettings {
+                        backends: Some(Backends::VULKAN),
+                        ..Default::default()
+                    }),
+                }),
+        )
         .add_plugins((PixelCameraPlugin, UiPlugin))
         .add_systems(Startup, setup)
         .run();

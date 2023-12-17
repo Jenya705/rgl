@@ -4,13 +4,31 @@ pub struct UiPlugin;
 
 impl Plugin for UiPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, button_system);
+        app.init_resource::<GenericButtonHandles>()
+            .add_systems(PostUpdate, button_system)
+            .add_systems(Startup, load_generic_button_handles);
     }
+}
+
+#[derive(Resource, Default)]
+struct GenericButtonHandles {
+    pressed: Handle<Image>,
+    hovered: Handle<Image>,
+    normal: Handle<Image>,
+}
+
+fn load_generic_button_handles(
+    asset_server: Res<AssetServer>,
+    mut handles: ResMut<GenericButtonHandles>,
+) {
+    handles.pressed = asset_server.load("buttons/menu/generic_button_pressed.png");
+    handles.hovered = asset_server.load("buttons/menu/generic_button_hover.png");
+    handles.normal = asset_server.load("buttons/menu/generic_button_normal.png");
 }
 
 fn button_system(
     mut query: Query<(&Interaction, &mut UiImage, &UiElement), Changed<Interaction>>,
-    asset_server: Res<AssetServer>,
+    handles: Res<GenericButtonHandles>,
 ) {
     for (interaction, mut image, element) in &mut query {
         if !matches!(element, UiElement::Button) {
@@ -18,15 +36,9 @@ fn button_system(
         };
 
         match interaction {
-            Interaction::Pressed => {
-                *image = UiImage::new(asset_server.load("buttons/menu/generic_button_pressed.png"))
-            }
-            Interaction::Hovered => {
-                *image = UiImage::new(asset_server.load("buttons/menu/generic_button_hover.png"))
-            }
-            Interaction::None => {
-                *image = UiImage::new(asset_server.load("buttons/menu/generic_button_normal.png"))
-            }
+            Interaction::Pressed => *image = UiImage::new(handles.pressed.clone()),
+            Interaction::Hovered => *image = UiImage::new(handles.hovered.clone()),
+            Interaction::None => *image = UiImage::new(handles.normal.clone()),
         }
     }
 }
@@ -85,7 +97,6 @@ impl<'w, 's, T: Spawn<'w, 's>> UiCommandsExt<'w, 's> for T {
 
         let mut ec = self.spawn((
             ButtonBundle {
-                image: UiImage::new(asset_server.load("buttons/menu/generic_button_normal.png")),
                 style,
                 ..Default::default()
             },
