@@ -54,12 +54,12 @@ pub trait RegistryAppExt {
 }
 
 #[derive(Resource, Default)]
-struct ConvertSystemsData {
+struct RegistrySystemsData {
     added_systems: HashSet<TypeId>,
     cancelled_systems: HashSet<TypeId>,
 }
 
-impl ConvertSystemsData {
+impl RegistrySystemsData {
     pub fn is_added<T: 'static>(&self, _marker: &T) -> bool {
         self.added_systems.contains(&TypeId::of::<T>())
     }
@@ -69,7 +69,7 @@ impl ConvertSystemsData {
         func: T,
         pre: bool,
     ) {
-        let mut acs = app.world.remove_resource::<ConvertSystemsData>().unwrap();
+        let mut acs = app.world.remove_resource::<RegistrySystemsData>().unwrap();
         if !acs.is_added(&func) {
             if pre {
                 app.add_systems(PreStartup, func);
@@ -103,7 +103,7 @@ where
 {
     commands.add(|world: &mut World| {
         if !world
-            .resource::<ConvertSystemsData>()
+            .resource::<RegistrySystemsData>()
             .is_cancelled(convert_system::<I, V, C1, C2>)
         {
             if let Some(data_cell) = world.remove_resource::<RegistryDataCell<I, V, C1, C2>>() {
@@ -114,12 +114,12 @@ where
 }
 
 fn remove_added_convert_systems_res(mut commands: Commands) {
-    commands.remove_resource::<ConvertSystemsData>();
+    commands.remove_resource::<RegistrySystemsData>();
 }
 
-fn csd_setup(app: &mut App) {
-    app.world.init_resource::<ConvertSystemsData>();
-    ConvertSystemsData::add_if_not_added(app, remove_added_convert_systems_res, false);
+fn rsd_init(app: &mut App) {
+    app.world.init_resource::<RegistrySystemsData>();
+    RegistrySystemsData::add_if_not_added(app, remove_added_convert_systems_res, false);
 }
 
 fn insert<I, V, C1, C2>(app: &mut App, id: I, value: V)
@@ -139,7 +139,7 @@ where
     C1: RegistryMapInsert<I, V>,
     C2: RegistryMapInsert<V, I>,
 {
-    ConvertSystemsData::add_if_not_added(app, convert_system::<I, V, C1, C2>, true);
+    RegistrySystemsData::add_if_not_added(app, convert_system::<I, V, C1, C2>, true);
     app.init_resource::<RegistryDataCell<I, V, C1, C2>>();
     // TODO: Debug?
     let _ = app
@@ -158,7 +158,7 @@ where
     C1: RegistryMapConvert,
     C1: RegistryMapInsert<I, V>,
 {
-    ConvertSystemsData::add_if_not_added(app, convert_system::<I, V, C1, ()>, true);
+    RegistrySystemsData::add_if_not_added(app, convert_system::<I, V, C1, ()>, true);
     app.init_resource::<RegistryDataCell<I, V, C1, ()>>();
     // TODO: Debug?
     let _ = app
@@ -173,7 +173,7 @@ impl RegistryAppExt for App {
         I1: RegistryItem,
         I2: RegistryItem,
     {
-        csd_setup(self);
+        rsd_init(self);
         insert::<
             RegistryId<I1::Registry>,
             RegistryId<I2::Registry>,
@@ -191,7 +191,7 @@ impl RegistryAppExt for App {
         V: Sync + Send + 'static,
         V: Eq,
     {
-        csd_setup(self);
+        rsd_init(self);
         insert::<
             RegistryId<I::Registry>,
             V,
@@ -206,7 +206,7 @@ impl RegistryAppExt for App {
         I: RegistryItem,
         V: Sync + Send + 'static,
     {
-        csd_setup(self);
+        rsd_init(self);
         insert_one_sided::<RegistryId<I::Registry>, V, RegistryIdMap<I::Registry, V>>(
             self,
             RegistryId::new::<I>(),
@@ -220,9 +220,9 @@ impl RegistryAppExt for App {
         I: RegistryItem,
         V: Sync + Send + 'static,
     {
-        csd_setup(self);
+        rsd_init(self);
         self.init_resource::<RegistryDataCell<RegistryId<I::Registry>, Vec<V>, RegistryIdMap<I::Registry, Vec<V>>>>();
-        ConvertSystemsData::add_if_not_added(
+        RegistrySystemsData::add_if_not_added(
             self,
             convert_system::<RegistryId<I::Registry>, V, RegistryIdMap<I::Registry, Vec<V>>, ()>,
             true,
@@ -239,8 +239,8 @@ impl RegistryAppExt for App {
         R1: Registry,
         R2: Registry,
     {
-        csd_setup(self);
-        self.world.resource_mut::<ConvertSystemsData>().cancel(
+        rsd_init(self);
+        self.world.resource_mut::<RegistrySystemsData>().cancel(
             convert_system::<
                 RegistryId<R1>,
                 RegistryId<R2>,
@@ -259,8 +259,8 @@ impl RegistryAppExt for App {
         V: Sync + Send + 'static,
         V: Eq,
     {
-        csd_setup(self);
-        self.world.resource_mut::<ConvertSystemsData>().cancel(
+        rsd_init(self);
+        self.world.resource_mut::<RegistrySystemsData>().cancel(
             convert_system::<RegistryId<R>, V, RegistryIdMap<R, V>, HashMap<V, RegistryId<R>>>,
         );
         self
@@ -271,9 +271,9 @@ impl RegistryAppExt for App {
         R: Registry,
         V: Sync + Send + 'static,
     {
-        csd_setup(self);
+        rsd_init(self);
         self.world
-            .resource_mut::<ConvertSystemsData>()
+            .resource_mut::<RegistrySystemsData>()
             .cancel(convert_system::<RegistryId<R>, V, RegistryIdMap<R, V>, ()>);
         self
     }
