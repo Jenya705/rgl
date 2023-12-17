@@ -17,7 +17,9 @@ impl Plugin for BindingPlugin {
         app.configure_sets(PreUpdate, BindingSet.after(InputSystem))
             .add_systems(PreUpdate, key_binding_input.in_set(BindingSet))
             .register_two_sided_data_id2value::<BindingRegistry, &'static str>("bindings")
-            .register_two_sided_data_id2value::<BindingCategoryRegistry, &'static str>("binding_categories");
+            .register_two_sided_data_id2value::<BindingCategoryRegistry, &'static str>(
+                "binding_categories",
+            );
     }
 }
 

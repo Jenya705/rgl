@@ -29,6 +29,11 @@ pub trait RegistryAppExt {
         I: RegistryItem,
         V: Sync + Send + 'static;
 
+    fn register_one_sided_vec_data<I, V>(&mut self, value: V) -> &mut Self
+    where
+        I: RegistryItem,
+        V: Sync + Send + 'static;
+
     fn keep_changable_two_sided_data_id2id<R1, R2>(&mut self) -> &mut Self
     where
         R1: Registry,
@@ -207,6 +212,25 @@ impl RegistryAppExt for App {
             RegistryId::new::<I>(),
             value,
         );
+        self
+    }
+
+    fn register_one_sided_vec_data<I, V>(&mut self, value: V) -> &mut Self
+    where
+        I: RegistryItem,
+        V: Sync + Send + 'static,
+    {
+        csd_setup(self);
+        self.init_resource::<RegistryDataCell<RegistryId<I::Registry>, Vec<V>, RegistryIdMap<I::Registry, Vec<V>>>>();
+        ConvertSystemsData::add_if_not_added(
+            self,
+            convert_system::<RegistryId<I::Registry>, V, RegistryIdMap<I::Registry, Vec<V>>, ()>,
+            true,
+        );
+        self.world
+            .resource_mut::<RegistryDataCell<RegistryId<I::Registry>, Vec<V>, RegistryIdMap<I::Registry, Vec<V>>>>()
+            .value_mut_or_insert_default(&RegistryId::new::<I>())
+            .push(value);
         self
     }
 

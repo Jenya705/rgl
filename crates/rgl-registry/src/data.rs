@@ -297,6 +297,30 @@ impl<Id, Value, C1> RegistryDataCell<Id, Value, C1, ()> {
         self.c1.get_mut(id)
     }
 
+    pub fn value_mut_or_insert_with(&mut self, id: &Id, with: impl FnOnce() -> Value) -> &mut Value
+    where
+        Id: Clone,
+        C1: RegistryMapGetMut<Id, Value>,
+        C1: RegistryMapInsert<Id, Value>,
+    {
+        // TODO: Some issues with borrow checker
+        if self.c1.get_mut(id).is_none() {
+            self.c1.insert(id.clone(), with());
+        }
+
+        self.c1.get_mut(id).unwrap()
+    }
+
+    pub fn value_mut_or_insert_default(&mut self, id: &Id) -> &mut Value
+    where
+        Id: Clone,
+        Value: Default,
+        C1: RegistryMapGetMut<Id, Value>,
+        C1: RegistryMapInsert<Id, Value>,
+    {
+        self.value_mut_or_insert_with(id, Default::default)
+    }
+
     pub fn insert_one_sided(&mut self, id: Id, value: Value) -> Option<Value>
     where
         C1: RegistryMapInsert<Id, Value>,
