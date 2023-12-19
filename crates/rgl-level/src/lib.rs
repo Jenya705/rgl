@@ -1,42 +1,55 @@
+use std::marker::PhantomData;
+
 use bevy::prelude::*;
 use bevy_ecs_tilemap::prelude::*;
 use fastrand::Rng;
 use rgl_registry::*;
 
-/// Handles generation of layers:
-/// - Each entity with [`Level`] component, that was recently created, will be used to generate Tilemaps using [`Layer`]
-/// - These generated Tilemaps will be [`Children`] of this [`Level`]
 pub struct LevelPlugin;
 
 impl Plugin for LevelPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(PostUpdate, generate_layers)
-            .register_two_sided_data_id2value::<LevelKindRegistry, &'static str>("level_kind")
+        app.register_two_sided_data_id2value::<LevelKindRegistry, &'static str>("level_kind")
             .register_two_sided_data_id2value::<DefaultLevel, &'static str>("default");
+    }
+}
+
+pub struct LayerPlugin<R: Registry>(PhantomData<R>);
+
+impl<R: Registry> Plugin for LayerPlugin<R> {
+    fn build(&self, app: &mut App) {
+        app.add_systems(PostUpdate, generate_layers::<R>);
+    }
+}
+
+impl<R: Registry> Default for LayerPlugin<R> {
+    fn default() -> Self {
+        Self(PhantomData)
     }
 }
 
 new_registry!(LevelKindRegistry, u16);
 
-#[derive(Bundle, Default)]
-pub struct LayerBundle {
-    pub layer: Layer,
+#[derive(Bundle)]
+pub struct LayerBundle<R: Registry> {
+    pub layer: Layer<R>,
     pub layer_rng: LayerRng,
     pub layer_scratch: LayerScratch,
 }
 
-impl LayerBundle {
-    pub fn from_layer(layer: Layer) -> Self {
+impl<R: Registry> LayerBundle<R> {
+    pub fn from_layer(layer: Layer<R>) -> Self {
         Self {
             layer,
-            ..Default::default()
+            layer_rng: LayerRng::default(),
+            layer_scratch: LayerScratch::default(),
         }
     }
 }
 
-fn generate_layers(
-    levels: Query<(&Level, Entity), Added<Level>>,
-    mut layers: Query<(&Layer, &mut LayerRng, &mut LayerScratch)>,
+fn generate_layers<R: Registry>(
+    levels: Query<(&Level<R>, Entity), Added<Level<R>>>,
+    mut layers: Query<(&Layer<R>, &mut LayerRng, &mut LayerScratch)>,
     commands: ParallelCommands,
 ) {
     layers
@@ -72,20 +85,33 @@ impl Default for LevelObjectRarity {
     }
 }
 
-#[derive(Component, Default)]
-pub struct Layer {
+#[derive(Component)]
+pub struct Layer<R: Registry> {
     /// Empty vector means, that the layer should be created for each level kind
     pub level_kinds: Vec<RegistryId<LevelKindRegistry>>,
     pub z_index: f32,
     pub tile_size: TilemapTileSize,
     pub grid_size: TilemapGridSize,
     pub texture: TilemapTexture,
-    objects: Vec<(Box<dyn LevelObjectDyn>, LevelObjectRarity)>,
+    objects: Vec<(Box<dyn LevelObjectDyn<R>>, LevelObjectRarity)>,
 }
 
-impl Layer {
-    pub fn add_object<T: LevelObject>(&mut self, obj: Box<T>, rarity: LevelObjectRarity) {
+impl<R: Registry> Layer<R> {
+    pub fn add_object<T: LevelObject<R>>(&mut self, obj: Box<T>, rarity: LevelObjectRarity) {
         self.objects.push((obj, rarity));
+    }
+}
+
+impl<R: Registry> Default for Layer<R> {
+    fn default() -> Self {
+        Self {
+            level_kinds: Vec::default(),
+            z_index: 0.0,
+            tile_size: Default::default(),
+            grid_size: Default::default(),
+            texture: Default::default(),
+            objects: Vec::default(),
+        }
     }
 }
 
@@ -97,11 +123,11 @@ pub struct LayerScratch(Vec<(usize, Vec<IVec2>)>);
 
 type DefaultTileBundle = TileBundle;
 
-impl Layer {
+impl<R: Registry> Layer<R> {
     pub fn spawn(
         &self,
         commands: &mut Commands,
-        level: &Level,
+        level: &Level<R>,
         rng: &mut Rng,
         scratch: &mut Vec<(usize, Vec<IVec2>)>,
         pos: Vec2,
@@ -186,58 +212,36 @@ impl Layer {
 }
 
 #[derive(Component)]
-pub struct Level {
-    pub tiles: Vec<UnknownRegistryId>,
+pub struct Level<R: Registry> {
+    pub tiles: Vec<RegistryId<R>>,
     pub kind: RegistryId<LevelKindRegistry>,
     pub size: IVec2,
-    #[cfg(debug_assertions)]
-    pub tiles_registry: RegistryId<Registries>,
 }
 
-impl Level {
-    pub fn from_tiles<TR: ChildRegistry, const C: usize, const R: usize>(
-        tiles: [[RegistryId<TR>; C]; R],
+impl<R: Registry> Level<R> {
+    pub fn from_tiles<const COLUMNS: usize, const ROWS: usize>(
+        tiles: [[RegistryId<R>; COLUMNS]; ROWS],
     ) -> Self {
-        let tiles = tiles.map(|tiles| tiles.map(UnknownRegistryId::from));
         let mut tiles_vec = Vec::new();
-        tiles_vec.reserve(C * R);
+        tiles_vec.reserve(COLUMNS * ROWS);
         // SAFETY: tiles_vec.reserve() ensures, that we will have space for C * R items in vec
         // tiles and tiles_vec can not overlap, because vec is allocated dynamically
-        unsafe { std::ptr::copy_nonoverlapping(tiles[0].as_ptr(), tiles_vec.as_mut_ptr(), C * R) };
+        unsafe {
+            std::ptr::copy_nonoverlapping(tiles[0].as_ptr(), tiles_vec.as_mut_ptr(), COLUMNS * ROWS)
+        };
         // SAFETY: we copied C * R items in the last statement
         unsafe {
-            tiles_vec.set_len(C * R);
+            tiles_vec.set_len(COLUMNS * ROWS);
         }
 
         Self {
             tiles: tiles_vec,
             kind: RegistryId::new::<DefaultLevel>(),
-            size: IVec2::new(C as i32, R as i32),
-            #[cfg(debug_assertions)]
-            tiles_registry: RegistryId::new::<TR>(),
+            size: IVec2::new(COLUMNS as i32, ROWS as i32),
         }
     }
-}
 
-new_registry_items!(LevelKindRegistry { DefaultLevel });
-
-#[derive(Bundle)]
-pub struct LevelBundle {
-    pub transform: TransformBundle,
-    pub level: Level,
-}
-
-impl LevelBundle {
-    pub fn from_level(level: Level) -> Self {
-        Self {
-            level,
-            transform: TransformBundle::default(),
-        }
-    }
-}
-
-impl Level {
-    pub fn iter(&self) -> impl Iterator<Item = (IVec2, UnknownRegistryId)> + '_ {
+    pub fn iter(&self) -> impl Iterator<Item = (IVec2, RegistryId<R>)> + '_ {
         self.tiles.iter().cloned().enumerate().map(|(index, tile)| {
             (
                 IVec2::new(index as i32 % self.size.x, index as i32 / self.size.y),
@@ -246,48 +250,61 @@ impl Level {
         })
     }
 
-    pub fn get(&self, pos: IVec2) -> UnknownRegistryId {
+    pub fn get(&self, pos: IVec2) -> Option<RegistryId<R>> {
         if pos.x >= self.size.x || pos.x <= -1 || pos.y >= self.size.y || pos.y <= -1 {
-            UnknownRegistryId::NONE
+            None
         } else {
-            self.tiles[(pos.x + pos.y * self.size.x) as usize]
+            Some(self.tiles[(pos.x + pos.y * self.size.x) as usize].clone())
         }
     }
 }
 
-pub trait LevelObject: Sync + Send + 'static {
+new_registry_items!(LevelKindRegistry { DefaultLevel });
+
+#[derive(Bundle)]
+pub struct LevelBundle<R: Registry> {
+    pub transform: TransformBundle,
+    pub level: Level<R>,
+}
+
+impl<R: Registry> LevelBundle<R> {
+    pub fn from_level(level: Level<R>) -> Self {
+        Self {
+            level,
+            transform: TransformBundle::default(),
+        }
+    }
+}
+
+pub trait LevelObject<R: Registry>: Sync + Send + 'static {
     type TileBundle: Bundle;
 
     fn bundle(&self, index: usize) -> Self::TileBundle;
 
-    fn check(&self, level: &Level, pos: IVec2, fill: &mut Vec<IVec2>) -> bool;
+    fn check(&self, level: &Level<R>, pos: IVec2, fill: &mut Vec<IVec2>) -> bool;
 }
 
-pub struct DefaultLevelObject<B> {
+pub struct DefaultLevelObject<R: Registry, B> {
     pub level_kind: Option<RegistryId<LevelKindRegistry>>,
-    pub tiles: [UnknownRegistryId; 9],
+    pub tiles: [Option<RegistryId<R>>; 9],
     pub bundle: B,
-    #[cfg(debug_assertions)]
-    pub tiles_registry: RegistryId<Registries>,
 }
 
-impl<B> DefaultLevelObject<B> {
-    pub fn new<TR: ChildRegistry>(
+impl<R: Registry, B> DefaultLevelObject<R, B> {
+    pub fn new(
         level_kind: Option<RegistryId<LevelKindRegistry>>,
-        tiles: [Option<RegistryId<TR>>; 9],
+        tiles: [Option<RegistryId<R>>; 9],
         bundle: B,
     ) -> Self {
         Self {
             level_kind,
-            tiles: tiles.map(UnknownRegistryId::from),
+            tiles,
             bundle,
-            #[cfg(debug_assertions)]
-            tiles_registry: RegistryId::new::<TR>(),
         }
     }
 }
 
-impl<B> LevelObject for DefaultLevelObject<B>
+impl<R: Registry, B> LevelObject<R> for DefaultLevelObject<R, B>
 where
     B: Bundle,
     B: Clone,
@@ -302,17 +319,16 @@ where
         self.bundle.clone()
     }
 
-    fn check(&self, level: &Level, pos: IVec2, fill: &mut Vec<IVec2>) -> bool {
+    fn check(&self, level: &Level<R>, pos: IVec2, fill: &mut Vec<IVec2>) -> bool {
         if matches!(&self.level_kind, Some(level_kind) if level.kind.ne(level_kind)) {
             return false;
         }
         let mut i = 0;
         for dy in -1..2 {
             for dx in -1..2 {
-                let rid = self.tiles[i];
-                if rid != UnknownRegistryId::NONE {
+                if let Some(rid) = &self.tiles[i] {
                     let c_pos = pos + IVec2::new(dx, dy);
-                    if level.get(c_pos) != rid {
+                    if !matches!(level.get(c_pos), Some(l_tile) if l_tile.eq(rid)) {
                         return false;
                     }
                 }
@@ -324,7 +340,7 @@ where
     }
 }
 
-trait LevelObjectDyn: Sync + Send + 'static {
+trait LevelObjectDyn<R: Registry>: Sync + Send + 'static {
     fn spawn(
         &self,
         positions: &Vec<IVec2>,
@@ -334,10 +350,10 @@ trait LevelObjectDyn: Sync + Send + 'static {
         tile_storage: &mut TileStorage,
     );
 
-    fn check(&self, level: &Level, pos: IVec2, fill: &mut Vec<IVec2>) -> bool;
+    fn check(&self, level: &Level<R>, pos: IVec2, fill: &mut Vec<IVec2>) -> bool;
 }
 
-impl<T: LevelObject> LevelObjectDyn for T {
+impl<R: Registry, T: LevelObject<R>> LevelObjectDyn<R> for T {
     fn spawn(
         &self,
         positions: &Vec<IVec2>,
@@ -359,7 +375,7 @@ impl<T: LevelObject> LevelObjectDyn for T {
         }
     }
 
-    fn check(&self, level: &Level, pos: IVec2, fill: &mut Vec<IVec2>) -> bool {
+    fn check(&self, level: &Level<R>, pos: IVec2, fill: &mut Vec<IVec2>) -> bool {
         T::check(&self, level, pos, fill)
     }
 }

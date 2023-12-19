@@ -1,8 +1,8 @@
 use bevy::prelude::*;
 use bevy_ecs_tilemap::prelude::*;
 use rgl_level::{
-    DefaultLevel, DefaultLevelObject, Layer, LayerBundle, Level, LevelBundle, LevelObjectRarity,
-    LevelPlugin,
+    DefaultLevel, DefaultLevelObject, Layer, LayerBundle, LayerPlugin, Level, LevelBundle,
+    LevelObjectRarity, LevelPlugin,
 };
 use rgl_registry::*;
 
@@ -11,6 +11,7 @@ fn main() {
         .add_plugins(DefaultPlugins)
         .add_plugins(TilemapPlugin)
         .add_plugins(LevelPlugin)
+        .add_plugins(LayerPlugin::<LevelTileRegistry>::default())
         .register_two_sided_data_id2value::<LevelTileRegistry, &'static str>("level_tile")
         .add_systems(Startup, setup)
         .run()
@@ -57,13 +58,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands.spawn(LayerBundle::from_layer(layer));
 
     commands.spawn(LevelBundle::from_level(Level::from_tiles([
-        [
-            RegistryId::new::<Floor>(),
-            RegistryId::new::<Floor>(),
-        ],
-        [
-            RegistryId::new::<Air>(),
-            RegistryId::new::<Wall>(),
-        ],
+        [RegistryId::new::<Floor>(), RegistryId::new::<Floor>()],
+        [RegistryId::new::<Air>(), RegistryId::new::<Wall>()],
     ])));
 }

@@ -21,6 +21,10 @@ impl<R: Registry> RegistryId<R> {
     pub fn numeric(self) -> RegistryIdNumeric {
         self.0.into()
     }
+
+    pub fn iter_all() -> impl Iterator<Item = RegistryId<R>> {
+        R::iter_all().map(|id| Self(id))
+    }
 }
 
 impl<R: Registry> PartialEq for RegistryId<R> {
