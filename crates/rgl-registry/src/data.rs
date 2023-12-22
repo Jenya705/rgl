@@ -197,6 +197,7 @@ impl RegistryMapConvert for () {
     }
 }
 
+/// A table with 2 keys, that point to each other. The second key (named value here) should be not RegistryId
 pub type RegistryTwoSidedDataCellId2Value<R, V> = RegistryDataCell<
     RegistryId<R>,
     V,
@@ -204,6 +205,7 @@ pub type RegistryTwoSidedDataCellId2Value<R, V> = RegistryDataCell<
     <HashMap<V, RegistryId<R>> as RegistryMapConvert>::Converted,
 >;
 
+/// A table with 2 keys, that point to each other. The second key (named value here) will be RegistryId
 pub type RegistryTwoSidedDataCellId2Id<R1, R2> = RegistryDataCell<
     RegistryId<R1>,
     RegistryId<R2>,
@@ -211,12 +213,16 @@ pub type RegistryTwoSidedDataCellId2Id<R1, R2> = RegistryDataCell<
     <RegistryIdMap<R2, RegistryId<R1>> as RegistryMapConvert>::Converted,
 >;
 
+/// A table with 1 key and 1 extra column, key points to one column
 pub type RegistryOneSidedDataCell<R, V> =
     RegistryDataCell<RegistryId<R>, V, <RegistryIdMap<R, V> as RegistryMapConvert>::Converted>;
 
+/// The same as [`RegistryTwoSidedDataCellId2Value`] but will not be optimized after Startup phase,
+/// that doesn't require all keys to be filled and new keys can be added in non Startup phases
 pub type ChangableRegistryTwoSidedDataCellId2Value<R, V> =
     RegistryDataCell<RegistryId<R>, V, RegistryIdMap<R, V>, HashMap<V, RegistryId<R>>>;
 
+/// The same as [`RegistryTwoSidedDataCellId2Id`] with concepts of [`ChangableRegistryTwoSidedDataCellId2Value`]
 pub type ChangableRegistryTwoSidedDataCellId2Id<R1, R2> = RegistryDataCell<
     RegistryId<R1>,
     RegistryId<R2>,
@@ -224,6 +230,7 @@ pub type ChangableRegistryTwoSidedDataCellId2Id<R1, R2> = RegistryDataCell<
     RegistryIdMap<R2, RegistryId<R1>>,
 >;
 
+/// The same as [`RegistryOneSidedDataCell`] with concepts of [`ChangableRegistryTwoSidedDataCellId2Value`]
 pub type ChangableRegistryOneSidedDataCell<R, V> =
     RegistryDataCell<RegistryId<R>, V, RegistryIdMap<R, V>>;
 
@@ -236,6 +243,7 @@ pub struct RegistryDataCell<I, V, C1, C2 = ()> {
 }
 
 impl<Id, Value, C1, C2> RegistryDataCell<Id, Value, C1, C2> {
+    /// Returns value using given id
     pub fn value(&self, id: &Id) -> Option<&Value>
     where
         C1: RegistryMapGet<Id, Value>,
@@ -243,6 +251,7 @@ impl<Id, Value, C1, C2> RegistryDataCell<Id, Value, C1, C2> {
         self.c1.get(id)
     }
 
+    /// Returns value using given value
     pub fn id(&self, value: &Value) -> Option<&Id>
     where
         C2: RegistryMapGet<Value, Id>,
@@ -250,6 +259,7 @@ impl<Id, Value, C1, C2> RegistryDataCell<Id, Value, C1, C2> {
         self.c2.get(value)
     }
 
+    /// Inserts new entry
     pub fn insert(&mut self, id: Id, value: Value) -> (Option<Value>, Option<Id>)
     where
         C1: RegistryMapInsert<Id, Value>,
@@ -263,6 +273,7 @@ impl<Id, Value, C1, C2> RegistryDataCell<Id, Value, C1, C2> {
         )
     }
 
+    /// Converts this registry data cell to more optimized one
     pub fn convert(self) -> RegistryDataCell<Id, Value, C1::Converted, C2::Converted>
     where
         C1: RegistryMapConvert,
@@ -280,6 +291,7 @@ impl<R, Value, C1, C2> RegistryDataCell<RegistryId<R>, Value, C1, C2>
 where
     R: Registry,
 {
+    /// Returns value using given [`RegistryItem`]
     pub fn value_ty<I>(&self) -> Option<&Value>
     where
         I: RegistryItem<Registry = R>,
@@ -290,6 +302,7 @@ where
 }
 
 impl<Id, Value, C1> RegistryDataCell<Id, Value, C1, ()> {
+    /// Returns mutable reference to the value under given id
     pub fn value_mut(&mut self, id: &Id) -> Option<&mut Value>
     where
         C1: RegistryMapGetMut<Id, Value>,
@@ -297,6 +310,7 @@ impl<Id, Value, C1> RegistryDataCell<Id, Value, C1, ()> {
         self.c1.get_mut(id)
     }
 
+    /// Inserts new entry, if it didn't exist and returns mutable reference to the value
     pub fn value_mut_or_insert_with(&mut self, id: &Id, with: impl FnOnce() -> Value) -> &mut Value
     where
         Id: Clone,
@@ -311,6 +325,7 @@ impl<Id, Value, C1> RegistryDataCell<Id, Value, C1, ()> {
         self.c1.get_mut(id).unwrap()
     }
 
+    /// Inserts new entry, if it didn't exist and returns mutable reference to the value
     pub fn value_mut_or_insert_default(&mut self, id: &Id) -> &mut Value
     where
         Id: Clone,
@@ -321,6 +336,7 @@ impl<Id, Value, C1> RegistryDataCell<Id, Value, C1, ()> {
         self.value_mut_or_insert_with(id, Default::default)
     }
 
+    /// Inserts new entry
     pub fn insert_one_sided(&mut self, id: Id, value: Value) -> Option<Value>
     where
         C1: RegistryMapInsert<Id, Value>,

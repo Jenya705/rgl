@@ -1,5 +1,6 @@
 use crate::*;
 
+/// A container for registry's id. Helps not to mix up different registries' ids
 #[repr(transparent)]
 pub struct RegistryId<R: Registry>(R::Id);
 
