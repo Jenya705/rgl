@@ -2,8 +2,6 @@ mod app;
 mod data;
 mod id;
 
-use std::ops::SubAssign;
-
 pub use app::*;
 pub use data::*;
 pub use id::*;
@@ -23,13 +21,11 @@ pub trait Registry: 'static + Sync + Send + Sized {
         + Into<RegistryIdNumeric>
         + TryFrom<RegistryIdNumeric>;
 
-    type IterAll: 'static + Iterator<Item = Self::Id>;
-
     fn reserve_id() -> Self::Id;
 
     fn count() -> usize;
 
-    fn iter_all() -> Self::IterAll;
+    fn iter_all() -> impl Iterator<Item = Self::Id>;
 }
 
 pub trait RegistryItem: 'static + Sync + Send + Sized {
@@ -39,31 +35,6 @@ pub trait RegistryItem: 'static + Sync + Send + Sized {
 }
 
 pub trait ChildRegistry: Registry + RegistryItem<Registry = Registries> {}
-
-#[doc(hidden)]
-pub struct RegistryNumericIdIter<T> {
-    pub current: T,
-}
-
-impl<T> Iterator for RegistryNumericIdIter<T>
-where
-    T: SubAssign<T>,
-    T: Eq,
-    T: From<u8>,
-    T: Clone,
-{
-    type Item = T;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let to_ret = self.current.clone();
-        if to_ret == 0u8.into() {
-            None
-        } else {
-            self.current -= 1u8.into();
-            Some(to_ret)
-        }
-    }
-}
 
 pub struct Registries;
 
@@ -125,8 +96,6 @@ macro_rules! __registry_impl {
         impl $crate::Registry for $registry {
             type Id = $id;
 
-            type IterAll = $crate::RegistryNumericIdIter<$id>;
-
             fn reserve_id() -> Self::Id {
                 $crate::__private::paste::paste! {
                     let mut lock = [<__ $registry _ID_COUNTER>].lock();
@@ -142,12 +111,8 @@ macro_rules! __registry_impl {
                 }
             }
 
-            fn iter_all() -> Self::IterAll {
-                Self::IterAll {
-                    current: $crate::__private::paste::paste! {
-                        (*[<__ $registry _ID_COUNTER>].lock())
-                    },
-                }
+            fn iter_all() -> impl std::iter::Iterator<Item = Self::Id> {
+                (0u8.into()..(Self::count() as u64).try_into().unwrap()).into_iter()
             }
         }
     };
